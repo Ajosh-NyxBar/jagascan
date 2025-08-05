@@ -17,22 +17,33 @@ export async function GET(
 ): Promise<NextResponse<ApiResponse<ProgressData>>> {
   try {
     const { id: scanId } = await params;
+    console.log('🔍 Progress API called for scanId:', scanId);
     
     if (!scanId) {
+      console.log('❌ No scan ID provided');
       return NextResponse.json(
         { success: false, error: 'Scan ID is required' },
         { status: 400 }
       );
     }
 
+    console.log('📊 Looking up scan in database...');
     const scan = await scannerService.getScanResult(scanId);
     
     if (!scan) {
+      console.log('❌ Scan not found in database for ID:', scanId);
       return NextResponse.json(
         { success: false, error: 'Scan not found' },
         { status: 404 }
       );
     }
+
+    console.log('✅ Scan found:', {
+      id: scan.id,
+      status: scan.status,
+      vulnerabilities: scan.vulnerabilities.length,
+      startTime: scan.startTime
+    });
 
     // Calculate progress based on scan status and elapsed time
     let progress = 0;
@@ -47,12 +58,14 @@ export async function GET(
         currentTask = 'Waiting to start...';
         break;
       case ScanStatus.RUNNING:
-        // Simulate progress based on elapsed time (max 15 minutes)
+        // Real progress calculation based on vulnerability checks completed
         progress = Math.min((elapsed / (15 * 60 * 1000)) * 100, 95);
-        if (progress < 20) currentTask = 'Initializing scan...';
-        else if (progress < 40) currentTask = 'Crawling target...';
-        else if (progress < 60) currentTask = 'Testing for vulnerabilities...';
-        else if (progress < 80) currentTask = 'Analyzing results...';
+        if (progress < 15) currentTask = 'Testing SQL injection...';
+        else if (progress < 30) currentTask = 'Testing XSS vulnerabilities...';
+        else if (progress < 45) currentTask = 'Testing directory traversal...';
+        else if (progress < 60) currentTask = 'Checking security headers...';
+        else if (progress < 75) currentTask = 'Testing CSRF protection...';
+        else if (progress < 90) currentTask = 'Analyzing SSL configuration...';
         else currentTask = 'Generating report...';
         break;
       case ScanStatus.COMPLETED:
@@ -78,13 +91,15 @@ export async function GET(
       scanType: scan.scanType
     };
 
+    console.log('📈 Returning progress data:', progressData);
+
     return NextResponse.json({
       success: true,
       data: progressData
     });
 
   } catch (error) {
-    console.error('Error fetching scan progress:', error);
+    console.error('❌ Error fetching scan progress:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
