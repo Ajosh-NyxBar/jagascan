@@ -34,8 +34,16 @@ export default function ScanProgress({ scanId, onComplete, onError }: ScanProgre
 
     const pollProgress = async () => {
       try {
+        // Determine API endpoint based on scan ID format
+        const isZAPScan = scanId.startsWith('zap-');
+        const apiEndpoint = isZAPScan 
+          ? `/api/zap/scan/${scanId}/progress`
+          : `/api/scan/${scanId}/progress`;
+        
+        console.log(`📊 Polling progress for ${isZAPScan ? 'ZAP' : 'regular'} scan:`, scanId);
+        
         // Real progress polling using API
-        const response = await fetch(`/api/scan/${scanId}/progress`);
+        const response = await fetch(apiEndpoint);
         if (!response.ok) throw new Error('Failed to fetch progress');
         
         const result = await response.json();

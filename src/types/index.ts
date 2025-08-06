@@ -75,6 +75,7 @@ export interface ScanMetadata {
   errorCount: number;
   userAgent: string;
   scannerVersion: string;
+  zapConfig?: any; // For ZAP-enhanced scans
 }
 
 export interface ScanRequest {

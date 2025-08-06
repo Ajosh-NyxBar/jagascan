@@ -11,6 +11,7 @@ JagaScan is a comprehensive security scanning platform built with Next.js 15, Ty
 - ✅ **Dashboard Overview**: Real-time statistics and vulnerability distribution charts
 - ✅ **URL/Domain Input Form**: Advanced target configuration with validation
 - ✅ **Basic Web Vulnerability Scanning**: OWASP Top 10 detection
+- ✅ **OWASP ZAP Integration**: Professional security scanning with industry-standard tools
 - ✅ **Real-time Scan Progress**: Live progress tracking with detailed status updates
 - ✅ **Report Generation**: Multiple format support (PDF/HTML/JSON)
 - ✅ **Scan History**: Complete scan management and filtering
@@ -118,7 +119,39 @@ src/
 - **Result Sanitization**: XSS protection in scan results
 - **Error Handling**: Graceful error management and logging
 
-## 📊 API Endpoints
+## �️ OWASP ZAP Integration
+
+JagaScan integrates with OWASP ZAP (Zed Attack Proxy) for professional-grade security testing:
+
+### Features
+- **Industry Standard**: Professional security scanning with OWASP ZAP 2.14.0+
+- **Advanced Scanning**: Spider crawling + Active vulnerability testing
+- **Real-time Progress**: Live tracking of spider and active scan phases
+- **Comprehensive Reports**: Detailed vulnerability reports with CVSS scoring
+- **API Integration**: RESTful API communication with ZAP daemon
+- **Custom Configurations**: Configurable scan depth, payloads, and policies
+
+### Setup
+1. **Install OWASP ZAP**: Download from [zaproxy.org](https://www.zaproxy.org/)
+2. **Configure API**: Enable API access and set API key: `4ke0djgc9n5v2mqv9582via78e`
+3. **Start ZAP**: Run ZAP on default port `8080`
+4. **Enable Integration**: Toggle ZAP integration in JagaScan scan page
+
+### Environment Variables
+```bash
+ZAP_URL=http://localhost:8080
+ZAP_API_KEY=4ke0djgc9n5v2mqv9582via78e
+ZAP_PROXY_HOST=localhost
+ZAP_PROXY_PORT=8081
+```
+
+### ZAP API Endpoints
+- `GET /api/zap/status` - Test ZAP connection and get version
+- `POST /api/zap/scan` - Start ZAP-enhanced security scan
+- `GET /api/zap/scan?scanId=xxx` - Get ZAP scan progress
+- `GET /api/zap/alerts` - Retrieve security alerts from ZAP
+
+## �📊 API Endpoints
 
 ### Scan Management
 - `POST /api/scan` - Start new scan

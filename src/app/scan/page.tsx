@@ -17,6 +17,7 @@ import {
 import ScanProgress from '@/components/ScanProgress';
 import ScanResultDisplay from '@/components/ScanResultDisplay';
 import ScanCompletionDisplay from '@/components/ScanCompletionDisplay';
+import ZAPIntegration from '@/components/ZAPIntegration';
 import { ToastContainer, useToast } from '@/components/Toast';
 import { ScanType, ScanOptions } from '@/types';
 
@@ -27,8 +28,18 @@ export default function ScanPage() {
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [completedScanId, setCompletedScanId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showZAPConfig, setShowZAPConfig] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [completionData, setCompletionData] = useState<any>(null);
+  const [zapConfig, setZapConfig] = useState<any>({
+    zapEnabled: false,
+    zapUrl: 'http://localhost:8080',
+    apiKey: '4ke0djgc9n5v2mqv9582via78e',
+    spiderMaxDepth: 5,
+    spiderMaxChildren: 10,
+    enableActiveScan: true,
+    enablePassiveScan: true
+  });
   const [options, setOptions] = useState<ScanOptions>({
     maxDepth: 3,
     followRedirects: true,
@@ -81,6 +92,53 @@ export default function ScanPage() {
     } catch (error) {
       console.error('Error starting scan:', error);
       showError('Error', error instanceof Error ? error.message : 'Failed to start scan');
+      setIsScanning(false);
+    }
+  };
+
+  const handleZAPConfigChange = (config: any) => {
+    setZapConfig(config);
+  };
+
+  const handleStartZAPScan = async (config: any) => {
+    if (!target) {
+      showError('Error', 'Please enter a target URL or domain first');
+      return;
+    }
+    
+    // Update ZAP config and start scan
+    setZapConfig(config);
+    setIsScanning(true);
+    
+    try {
+      const response = await fetch('/api/zap/scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target,
+          scanTypes,
+          options,
+          zapConfig: config
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start ZAP scan');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setCurrentScanId(result.data.scanId);
+        showSuccess('ZAP-Enhanced Scan Started', `Scan ID: ${result.data.scanId}`);
+      } else {
+        throw new Error(result.error || 'Failed to start ZAP scan');
+      }
+    } catch (error) {
+      console.error('Error starting ZAP scan:', error);
+      showError('Error', error instanceof Error ? error.message : 'Failed to start ZAP scan');
       setIsScanning(false);
     }
   };
@@ -277,6 +335,38 @@ export default function ScanPage() {
           </div>
         </div>
 
+        {/* ZAP Integration */}
+        <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6 mb-6">
+          <button
+            onClick={() => setShowZAPConfig(!showZAPConfig)}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <div className="flex items-center space-x-3">
+              <Shield className="h-6 w-6 text-purple-500" />
+              <div>
+                <h2 className="text-xl font-semibold">OWASP ZAP Integration</h2>
+                <p className="text-sm text-gray-400">Enhanced scanning with industry-standard tools</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              {zapConfig.zapEnabled && (
+                <span className="text-xs px-2 py-1 bg-purple-600 text-white rounded">ENABLED</span>
+              )}
+              <Settings className={`h-5 w-5 transition-transform ${showZAPConfig ? 'rotate-90' : ''}`} />
+            </div>
+          </button>
+          
+          {showZAPConfig && (
+            <div className="mt-6">
+              <ZAPIntegration
+                onConfigChange={handleZAPConfigChange}
+                onStartZAPScan={handleStartZAPScan}
+                isScanning={isScanning}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Advanced Options */}
         <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6 mb-6">
           <button
@@ -341,12 +431,12 @@ export default function ScanPage() {
         {!isScanning ? (
           <div className="space-y-4">
             <button
-              onClick={handleStartScan}
+              onClick={zapConfig.zapEnabled ? () => handleStartZAPScan(zapConfig) : handleStartScan}
               disabled={!target || scanTypes.length === 0}
-              className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+              className={`w-full ${zapConfig.zapEnabled ? 'bg-purple-600 hover:bg-purple-700' : 'bg-red-600 hover:bg-red-700'} disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-4 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2`}
             >
-              <Play className="h-5 w-5" />
-              Start Security Scan
+              {zapConfig.zapEnabled ? <Shield className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+              {zapConfig.zapEnabled ? 'Start ZAP-Enhanced Scan' : 'Start Security Scan'}
             </button>
             
             {/* Demo Button - Test Completion Display with Sample Data */}

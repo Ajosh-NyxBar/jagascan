@@ -74,6 +74,89 @@ export class ScannerService {
   }
 
   /**
+   * Create ZAP scan record in database
+   */
+  async createZAPScanRecord(zapScanData: {
+    scanId: string;
+    target: string;
+    scanTypes: ScanType[];
+    zapConfig: any;
+  }): Promise<void> {
+    console.log('💾 Creating ZAP scan record:', zapScanData.scanId);
+    
+    const targetId = this.generateTargetId(zapScanData.target);
+    
+    const scan: ScanResult = {
+      id: zapScanData.scanId,
+      targetId,
+      scanType: zapScanData.scanTypes[0] || ScanType.WEB_VULNERABILITY,
+      status: ScanStatus.RUNNING,
+      startTime: new Date(),
+      vulnerabilities: [],
+      metadata: {
+        duration: 0,
+        requestCount: 0,
+        responseCount: 0,
+        errorCount: 0,
+        userAgent: 'OWASP ZAP via JagaScan',
+        scannerVersion: '1.0.0-zap',
+        zapConfig: zapScanData.zapConfig
+      }
+    };
+
+    await this.db.createScan(scan);
+    console.log('✅ ZAP scan record created in database');
+  }
+
+  /**
+   * Update ZAP scan progress and status
+   */
+  async updateZAPScanProgress(
+    scanId: string, 
+    progress: {
+      status?: ScanStatus;
+      phase?: string;
+      progress?: number;
+      vulnerabilities?: Vulnerability[];
+      currentTask?: string;
+    }
+  ): Promise<void> {
+    console.log('📊 Updating ZAP scan progress:', scanId, progress);
+    
+    const existing = await this.db.getScan(scanId);
+    if (!existing) {
+      console.error('❌ ZAP scan not found for update:', scanId);
+      return;
+    }
+
+    const updates: Partial<ScanResult> = {};
+    
+    if (progress.status) {
+      updates.status = progress.status;
+      if (progress.status === ScanStatus.COMPLETED) {
+        updates.endTime = new Date();
+      }
+    }
+    
+    if (progress.vulnerabilities) {
+      updates.vulnerabilities = progress.vulnerabilities;
+    }
+
+    // Update metadata
+    if (existing.metadata) {
+      updates.metadata = {
+        ...existing.metadata,
+        ...(progress.currentTask && { currentTask: progress.currentTask }),
+        ...(progress.phase && { scanPhase: progress.phase }),
+        ...(progress.progress && { scanProgress: progress.progress })
+      };
+    }
+
+    await this.db.updateScan(scanId, updates);
+    console.log('✅ ZAP scan updated in database');
+  }
+
+  /**
    * Perform the actual scanning with real HTTP requests
    */
   private async performScan(scanId: string, request: ScanRequest): Promise<void> {
