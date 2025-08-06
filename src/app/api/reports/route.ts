@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ApiResponse, ReportConfig, ReportFormat } from '@/types';
+import { ApiResponse, ReportConfig, ReportFormat, ScanResult } from '@/types';
+import { scannerService } from '@/lib/scannerService';
 
 export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<{ reportUrl: string }>>> {
   try {
@@ -53,17 +54,29 @@ async function generateReport(scanId: string, config: ReportConfig): Promise<str
   return `/api/reports/download/${fileName}`;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<string[]>>> {
+export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<ScanResult[]>>> {
   try {
-    const { searchParams } = new URL(request.url);
-    const scanId = searchParams.get('scanId');
+    console.log('📊 Reports API called');
     
-    // Mock list of available reports
-    const reports = [
-      'scan-report-scan_123-2024-12-20.pdf',
-      'scan-report-scan_124-2024-12-20.html',
-      'scan-report-scan_125-2024-12-20.json'
-    ];
+    // Get query parameters for filtering
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    const scanType = searchParams.get('scanType');
+    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
+    const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : undefined;
+
+    const filters = {
+      status: status as any,
+      scanType: scanType as any,
+      limit,
+      offset
+    };
+
+    console.log('🔍 Fetching reports with filters:', filters);
+    
+    const reports = await scannerService.getAllScans(filters);
+    
+    console.log('✅ Found reports:', reports.length);
 
     return NextResponse.json({
       success: true,
@@ -71,7 +84,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
     });
 
   } catch (error) {
-    console.error('Error fetching reports:', error);
+    console.error('❌ Error fetching reports:', error);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

@@ -64,8 +64,8 @@ export default function ScanProgress({ scanId, onComplete, onError }: ScanProgre
             let progress = 0;
             let currentTask = 'Initializing scan...';
             const elapsed = scan.endTime 
-              ? scan.endTime.getTime() - scan.startTime.getTime()
-              : Date.now() - scan.startTime.getTime();
+              ? new Date(scan.endTime).getTime() - new Date(scan.startTime).getTime()
+              : Date.now() - new Date(scan.startTime).getTime();
 
             switch (scan.status) {
               case ScanStatus.PENDING:

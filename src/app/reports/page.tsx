@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Shield, 
@@ -12,9 +12,12 @@ import {
   Clock,
   Filter,
   Calendar,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
 import { ScanResult, Severity, ScanStatus } from '@/types';
+import ScanResultDisplay from '@/components/ScanResultDisplay';
+import ScanNotification from '@/components/ScanNotification';
 
 // Mock data
 const mockReports: ScanResult[] = [
@@ -90,10 +93,94 @@ const mockReports: ScanResult[] = [
 ];
 
 export default function ReportsPage() {
-  const [reports, setReports] = useState<ScanResult[]>(mockReports);
+  const [reports, setReports] = useState<ScanResult[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ScanStatus | 'all'>('all');
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
+  const [loading, setLoading] = useState(true);
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    scanId: string;
+    scanType: string;
+    status: ScanStatus;
+    vulnerabilitiesFound: number;
+    duration: number;
+  }>>([]);
+
+  useEffect(() => {
+    fetchReports();
+    
+    // Poll for new scan completions
+    const interval = setInterval(fetchReports, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchReports = async () => {
+    try {
+      const response = await fetch('/api/reports');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          const newReports = data.data.map((report: any) => ({
+            ...report,
+            startTime: new Date(report.startTime),
+            endTime: report.endTime ? new Date(report.endTime) : undefined
+          }));
+          
+          // Check for newly completed scans
+          if (reports.length > 0) {
+            const completedScans = newReports.filter((newReport: ScanResult) => {
+              const oldReport = reports.find(r => r.id === newReport.id);
+              return oldReport?.status !== ScanStatus.COMPLETED && 
+                     newReport.status === ScanStatus.COMPLETED;
+            });
+            
+            // Show notifications for completed scans
+            completedScans.forEach((scan: ScanResult) => {
+              addNotification({
+                id: `notif_${scan.id}_${Date.now()}`,
+                scanId: scan.id,
+                scanType: scan.scanType,
+                status: scan.status,
+                vulnerabilitiesFound: scan.vulnerabilities.length,
+                duration: scan.endTime ? 
+                  scan.endTime.getTime() - scan.startTime.getTime() : 0
+              });
+            });
+          }
+          
+          setReports(newReports);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch reports:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addNotification = (notification: any) => {
+    setNotifications(prev => [...prev, notification]);
+    
+    // Auto-remove notification after 10 seconds
+    setTimeout(() => {
+      removeNotification(notification.id);
+    }, 10000);
+  };
+
+  const removeNotification = (notificationId: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+  };
+
+  const handleViewReport = (scanId: string) => {
+    setSelectedScanId(scanId);
+  };
+
+  const handleDownloadReport = (scanId: string, format: 'pdf' | 'html' | 'json' = 'pdf') => {
+    // Mock download functionality
+    window.open(`/api/reports/${scanId}/download?format=${format}`, '_blank');
+  };
 
   const filteredReports = reports.filter(report => {
     const matchesSearch = searchTerm === '' || 
@@ -125,11 +212,6 @@ export default function ReportsPage() {
     }
   };
 
-  const handleDownloadReport = (reportId: string, format: 'pdf' | 'html' | 'json') => {
-    // Mock download functionality
-    alert(`Downloading report ${reportId} as ${format.toUpperCase()}`);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
       {/* Navigation */}
@@ -157,9 +239,18 @@ export default function ReportsPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Scan Reports</h1>
-          <p className="text-gray-400">View and download security scan reports</p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Scan Reports</h1>
+            <p className="text-gray-400">View and download security scan reports</p>
+          </div>
+          <button
+            onClick={fetchReports}
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
         </div>
 
         {/* Filters */}
@@ -218,108 +309,145 @@ export default function ReportsPage() {
         </div>
 
         {/* Reports List */}
-        <div className="space-y-4">
-          {filteredReports.map((report) => (
-            <div key={report.id} className="bg-gray-800/50 rounded-lg border border-gray-700 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  {getStatusIcon(report.status)}
-                  <div>
-                    <h3 className="text-lg font-semibold capitalize">
-                      {report.scanType.replace('_', ' ')} Scan
-                    </h3>
-                    <p className="text-gray-400 text-sm">
-                      Started: {report.startTime.toLocaleString()}
-                    </p>
+        {loading ? (
+          <div className="text-center py-12">
+            <RefreshCw className="h-8 w-8 text-blue-500 animate-spin mx-auto mb-4" />
+            <p className="text-gray-400">Loading scan reports...</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredReports.map((report) => (
+              <div key={report.id} className="bg-gray-800/50 rounded-lg border border-gray-700 p-6 hover:border-gray-600 transition-colors">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    {getStatusIcon(report.status)}
+                    <div>
+                      <h3 className="text-lg font-semibold capitalize flex items-center gap-2">
+                        {report.scanType.replace('_', ' ')} Scan
+                        {report.status === ScanStatus.COMPLETED && report.vulnerabilities.length > 0 && (
+                          <span className="bg-red-500/20 text-red-400 px-2 py-1 rounded text-xs">
+                            {report.vulnerabilities.length} issues
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Started: {new Date(report.startTime).toLocaleString()}
+                        {report.endTime && (
+                          <span className=" • ">
+                            Completed: {new Date(report.endTime).toLocaleString()}
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => alert(`Viewing report ${report.id}`)}
-                    className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1"
-                  >
-                    <Eye className="h-4 w-4" />
-                    View
-                  </button>
-                  <div className="relative group">
-                    <button className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1">
-                      <Download className="h-4 w-4" />
-                      Download
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleViewReport(report.id)}
+                      className="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View
                     </button>
-                    <div className="absolute right-0 mt-2 w-32 bg-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                      <button
-                        onClick={() => handleDownloadReport(report.id, 'pdf')}
-                        className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600 rounded-t-lg"
-                      >
-                        PDF
+                    <div className="relative group">
+                      <button className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-sm font-medium transition-colors flex items-center gap-1">
+                        <Download className="h-4 w-4" />
+                        Download
                       </button>
-                      <button
-                        onClick={() => handleDownloadReport(report.id, 'html')}
-                        className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600"
-                      >
-                        HTML
-                      </button>
-                      <button
-                        onClick={() => handleDownloadReport(report.id, 'json')}
-                        className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600 rounded-b-lg"
-                      >
-                        JSON
-                      </button>
+                      <div className="absolute right-0 mt-2 w-32 bg-gray-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                        <button
+                          onClick={() => handleDownloadReport(report.id, 'pdf')}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600 rounded-t-lg"
+                        >
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => handleDownloadReport(report.id, 'html')}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600"
+                        >
+                          HTML
+                        </button>
+                        <button
+                          onClick={() => handleDownloadReport(report.id, 'json')}
+                          className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-600 rounded-b-lg"
+                        >
+                          JSON
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                <div>
-                  <p className="text-sm text-gray-400">Status</p>
-                  <p className="font-medium capitalize">{report.status}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">Duration</p>
-                  <p className="font-medium">
-                    {report.endTime 
-                      ? `${Math.round((report.endTime.getTime() - report.startTime.getTime()) / 60000)}m`
-                      : 'Running...'
-                    }
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">Requests</p>
-                  <p className="font-medium">{report.metadata.requestCount}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">Vulnerabilities</p>
-                  <p className="font-medium">{report.vulnerabilities.length}</p>
-                </div>
-              </div>
-
-              {report.vulnerabilities.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Vulnerabilities Found:</h4>
-                  <div className="space-y-2">
-                    {report.vulnerabilities.slice(0, 3).map((vuln) => (
-                      <div key={vuln.id} className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className={`px-2 py-1 rounded-full text-xs border ${getSeverityColor(vuln.severity)}`}>
-                            {vuln.severity.toUpperCase()}
-                          </span>
-                          <span className="text-sm">{vuln.title}</span>
-                        </div>
-                        <span className="text-xs text-gray-400">{vuln.location}</span>
-                      </div>
-                    ))}
-                    {report.vulnerabilities.length > 3 && (
-                      <p className="text-sm text-gray-400">
-                        +{report.vulnerabilities.length - 3} more vulnerabilities
-                      </p>
-                    )}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-400">Status</p>
+                    <p className={`font-medium capitalize ${
+                      report.status === ScanStatus.COMPLETED ? 'text-green-400' :
+                      report.status === ScanStatus.RUNNING ? 'text-blue-400' :
+                      report.status === ScanStatus.FAILED ? 'text-red-400' : 'text-gray-400'
+                    }`}>
+                      {report.status}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Duration</p>
+                    <p className="font-medium">
+                      {report.endTime && report.startTime
+                        ? `${Math.round((new Date(report.endTime).getTime() - new Date(report.startTime).getTime()) / 60000)}m`
+                        : 'Running...'
+                      }
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Requests</p>
+                    <p className="font-medium">{report.metadata.requestCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Vulnerabilities</p>
+                    <p className={`font-medium ${
+                      report.vulnerabilities.length > 0 ? 'text-red-400' : 'text-green-400'
+                    }`}>
+                      {report.vulnerabilities.length}
+                    </p>
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+
+                {report.vulnerabilities.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Vulnerabilities Found:</h4>
+                    <div className="space-y-2">
+                      {report.vulnerabilities.slice(0, 3).map((vuln) => (
+                        <div key={vuln.id} className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <span className={`px-2 py-1 rounded-full text-xs border ${getSeverityColor(vuln.severity)}`}>
+                              {vuln.severity.toUpperCase()}
+                            </span>
+                            <span className="text-sm">{vuln.title}</span>
+                          </div>
+                          <span className="text-xs text-gray-400">{vuln.location}</span>
+                        </div>
+                      ))}
+                      {report.vulnerabilities.length > 3 && (
+                        <p className="text-sm text-gray-400">
+                          +{report.vulnerabilities.length - 3} more vulnerabilities
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Progress indicator for running scans */}
+                {report.status === ScanStatus.RUNNING && (
+                  <div className="mt-4">
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Scan in progress...</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {filteredReports.length === 0 && (
           <div className="text-center py-12">
@@ -341,6 +469,34 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+
+      {/* Scan Result Modal */}
+      {selectedScanId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <ScanResultDisplay
+              scanId={selectedScanId}
+              showFullReport={true}
+              onClose={() => setSelectedScanId(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Notifications */}
+      {notifications.map((notification) => (
+        <ScanNotification
+          key={notification.id}
+          scanId={notification.scanId}
+          scanType={notification.scanType}
+          status={notification.status}
+          vulnerabilitiesFound={notification.vulnerabilitiesFound}
+          duration={notification.duration}
+          onDismiss={() => removeNotification(notification.id)}
+          onViewReport={handleViewReport}
+          onDownload={handleDownloadReport}
+        />
+      ))}
     </div>
   );
 }

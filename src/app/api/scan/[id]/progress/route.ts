@@ -60,7 +60,7 @@ export async function GET(
       case ScanStatus.RUNNING:
         // Real progress calculation based on vulnerability checks completed
         progress = Math.min((elapsed / (15 * 60 * 1000)) * 100, 95);
-        if (progress < 15) currentTask = 'Testing SQL injection...';
+        if (progress < 15) currentTask = 'Analyze.......';
         else if (progress < 30) currentTask = 'Testing XSS vulnerabilities...';
         else if (progress < 45) currentTask = 'Testing directory traversal...';
         else if (progress < 60) currentTask = 'Checking security headers...';
